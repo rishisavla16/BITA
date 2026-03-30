@@ -22,6 +22,7 @@ venv/
 # Generated screenshots and temporary outputs
 screenshots/
 analysis_logs.db
+intel/safe_domains_10m.meta.json
 
 # OS/editor files
 .DS_Store
