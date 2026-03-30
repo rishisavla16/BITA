@@ -1,0 +1,6 @@
+youtube.com
+google.com
+gmail.com
+microsoft.com
+github.com
+wikipedia.org

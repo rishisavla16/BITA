@@ -1,0 +1,30 @@
+# Python cache and virtual environments
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+.venv/
+venv/
+
+# Environment and secrets
+.env
+.env.*
+*.key
+*.pem
+
+# Local databases and logs
+*.db
+*.sqlite
+*.sqlite3
+*.log
+
+# Generated screenshots and temporary outputs
+screenshots/
+analysis_logs.db
+
+# OS/editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Remote Browser Isolation + Threat Analyzer</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+</head>
+<body>
+  <main class="app-shell">
+    <section class="panel hero">
+      <h1>Remote Browser Isolation + Threat Analyzer</h1>
+      <p>
+        Untrusted URLs are executed only in a server-side isolated browser. You receive a safe screenshot,
+        metadata, and risk analysis results only.
+      </p>
+
+      <form id="analyzeForm" class="analyze-form" autocomplete="off">
+        <label for="urlInput">URL to analyze</label>
+        <div class="input-row">
+          <input id="urlInput" name="url" type="text" placeholder="example.com or https://example.com" required />
+          <button type="submit">Analyze</button>
+        </div>
+      </form>
+
+      <div id="loading" class="loading hidden" aria-live="polite">
+        <div class="spinner" aria-hidden="true"></div>
+        <span id="loadingText">Running isolated analysis...</span>
+      </div>
+
+      <div id="livePanel" class="live-panel hidden">
+        <h3>Live Sandbox Preview</h3>
+        <p id="liveStage" class="live-stage">Waiting for sandbox...</p>
+        <img id="liveShot" alt="Live preview from isolated browser" />
+      </div>
+
+      <div id="errorBox" class="error hidden"></div>
+    </section>
+
+    <section id="resultPanel" class="panel result hidden">
+      <div class="result-header">
+        <h2>Analysis Result</h2>
+        <span id="verdictBadge" class="badge">Pending</span>
+      </div>
+
+      <div class="meta-grid">
+        <div>
+          <h3>Final URL</h3>
+          <p id="finalUrl" class="mono">-</p>
+        </div>
+        <div>
+          <h3>Page Title</h3>
+          <p id="pageTitle">-</p>
+        </div>
+        <div>
+          <h3>Risk Score</h3>
+          <p id="riskScore">-</p>
+        </div>
+        <div>
+          <h3>Redirects</h3>
+          <p id="redirectCount">-</p>
+        </div>
+        <div>
+          <h3>Safe Index Match</h3>
+          <p id="safeMatch">-</p>
+        </div>
+      </div>
+
+      <div class="screenshot-wrap">
+        <h3>Safe Preview (Screenshot)</h3>
+        <img id="shot" alt="Isolated website screenshot" />
+      </div>
+
+      <div>
+        <h3>Reasons</h3>
+        <ul id="reasonsList"></ul>
+      </div>
+    </section>
+  </main>
+
+  <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>
