@@ -28,6 +28,69 @@ app.config["MAX_CONTENT_LENGTH"] = 16 * 1024  # Prevent oversized request bodies
 ANALYSIS_JOBS: Dict[str, Dict[str, Any]] = {}
 ANALYSIS_LOCK = threading.Lock()
 JOB_RETENTION_SECONDS = 1800
+SCREENSHOT_RETENTION_SECONDS = 1800
+SCREENSHOT_CLEANUP_INTERVAL_SECONDS = 300
+LAST_SCREENSHOT_CLEANUP_AT = 0.0
+
+
+def _safe_remove_file(file_path: str) -> None:
+    try:
+        if os.path.exists(file_path):
+            os.remove(file_path)
+    except OSError:
+        # Cleanup should never break request flow.
+        pass
+
+
+def _web_path_to_disk_path(web_path: str) -> str | None:
+    if not web_path or not web_path.startswith("/screenshots/"):
+        return None
+
+    filename = os.path.basename(web_path)
+    if not filename:
+        return None
+
+    candidate = os.path.abspath(os.path.join(SCREENSHOTS_DIR, filename))
+    screenshots_root = os.path.abspath(SCREENSHOTS_DIR)
+    if not candidate.startswith(screenshots_root + os.sep):
+        return None
+    return candidate
+
+
+def _cleanup_job_artifacts(job: Dict[str, Any] | None) -> None:
+    if not job:
+        return
+
+    preview_disk_path = _web_path_to_disk_path(str(job.get("preview_path", "")))
+    if preview_disk_path:
+        _safe_remove_file(preview_disk_path)
+
+    result = job.get("result") or {}
+    screenshot_disk_path = _web_path_to_disk_path(str(result.get("screenshot_path", "")))
+    if screenshot_disk_path:
+        _safe_remove_file(screenshot_disk_path)
+
+
+def _prune_old_screenshots(force: bool = False) -> None:
+    global LAST_SCREENSHOT_CLEANUP_AT
+
+    now = time.time()
+    if not force and (now - LAST_SCREENSHOT_CLEANUP_AT) < SCREENSHOT_CLEANUP_INTERVAL_SECONDS:
+        return
+
+    LAST_SCREENSHOT_CLEANUP_AT = now
+    cutoff = now - SCREENSHOT_RETENTION_SECONDS
+
+    try:
+        for name in os.listdir(SCREENSHOTS_DIR):
+            file_path = os.path.join(SCREENSHOTS_DIR, name)
+            if not os.path.isfile(file_path):
+                continue
+            if os.path.getmtime(file_path) < cutoff:
+                _safe_remove_file(file_path)
+    except OSError:
+        # Cleanup should never break request flow.
+        return
 
 
 def init_db() -> None:
@@ -123,7 +186,8 @@ def _prune_old_jobs() -> None:
             if job.get("completed_at") and job.get("completed_at", 0) < cutoff
         ]
         for job_id in stale_ids:
-            ANALYSIS_JOBS.pop(job_id, None)
+            stale_job = ANALYSIS_JOBS.pop(job_id, None)
+            _cleanup_job_artifacts(stale_job)
 
 
 def _create_job(submitted_url: str, normalized_url: str) -> str:
@@ -165,6 +229,12 @@ def _get_job(job_id: str) -> Dict[str, Any] | None:
 
 def _build_analysis_response(submitted_url: str, normalized_url: str) -> Dict[str, Any]:
     sandbox_result = run_in_sandbox(normalized_url, SCREENSHOTS_DIR, timeout_ms=10000)
+
+    # Synchronous endpoint does not expose live preview; remove it immediately.
+    preview_disk_path = _web_path_to_disk_path(str(sandbox_result.get("live_preview_path", "")))
+    if preview_disk_path:
+        _safe_remove_file(preview_disk_path)
+
     safe_match = SAFE_URL_INDEX.might_be_safe(sandbox_result.get("final_url", normalized_url))
     behavior = analyze_behavior(normalized_url, sandbox_result, safe_match)
     scoring = score_risk(behavior)
@@ -230,11 +300,17 @@ def _run_async_analysis_job(job_id: str) -> None:
             "verdict": scoring["verdict"],
         }
 
+        # Live preview is useful only while the job is running.
+        preview_disk_path = _web_path_to_disk_path(str(sandbox_result.get("live_preview_path", "")))
+        if preview_disk_path:
+            _safe_remove_file(preview_disk_path)
+
         persist_log(submitted_url, normalized_url, response)
         _update_job(
             job_id,
             status="completed",
             stage="Analysis complete",
+            preview_path="",
             result=response,
             completed_at=time.time(),
         )
@@ -293,6 +369,7 @@ def analyze_url():
 @app.route("/analyze/start", methods=["POST"])
 def analyze_start():
     _prune_old_jobs()
+    _prune_old_screenshots()
     payload = request.get_json(silent=True) or {}
     submitted_url = (payload.get("url") or "").strip()
 
@@ -311,6 +388,7 @@ def analyze_start():
 @app.route("/analyze/status/<job_id>", methods=["GET"])
 def analyze_status(job_id: str):
     _prune_old_jobs()
+    _prune_old_screenshots()
     job = _get_job(job_id)
     if not job:
         return jsonify({"ok": False, "error": "Job not found or expired."}), 404

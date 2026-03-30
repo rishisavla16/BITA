@@ -79,7 +79,11 @@ function renderFinalResult(data) {
   shot.src = data.screenshot_path;
   renderVerdict(data.verdict || "Unknown");
   renderReasons(data.reasons || []);
+
+  // Keep focus on the final analysis output once the job is complete.
+  livePanel.classList.add("hidden");
   resultPanel.classList.remove("hidden");
+  resultPanel.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 async function pollJobStatus(jobId) {
