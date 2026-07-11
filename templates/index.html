@@ -3,13 +3,14 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Remote Browser Isolation + Threat Analyzer</title>
+  <title>Remote Browser Isolation &amp; Threat Analyzer</title>
+  <meta name="description" content="Analyze untrusted URLs safely inside a server-side isolated browser. Get risk scores, threat signals, and a safe screenshot — without exposing your device." />
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
 </head>
 <body>
   <main class="app-shell">
     <section class="panel hero">
-      <h1>Remote Browser Isolation + Threat Analyzer</h1>
+      <h1>Remote Browser Isolation &amp; Threat Analyzer</h1>
       <p>
         Untrusted URLs are executed only in a server-side isolated browser. You receive a safe screenshot,
         metadata, and risk analysis results only.
@@ -19,7 +20,10 @@
         <label for="urlInput">URL to analyze</label>
         <div class="input-row">
           <input id="urlInput" name="url" type="text" placeholder="https://example.com" required />
-          <button type="submit">Analyze</button>
+          <button type="submit" id="analyzeBtn">Analyze</button>
+          <button type="button" id="pasteBtn">Paste</button>
+          <button type="button" id="cancelBtn" class="btn-secondary hidden">Cancel</button>
+          <button type="button" id="clearBtn" class="btn-secondary hidden">Clear</button>
         </div>
       </form>
 
@@ -43,7 +47,17 @@
         <span id="verdictBadge" class="badge">Pending</span>
       </div>
 
-      <div class="meta-grid">
+      <div class="risk-meter-wrap report-section">
+        <div class="risk-meter-label-row">
+          <h3>Risk Meter</h3>
+          <span id="riskMeterLabel" class="risk-meter-label">-</span>
+        </div>
+        <div class="risk-meter-track" aria-label="Risk score meter">
+          <div id="riskMeterFill" class="risk-meter-fill"></div>
+        </div>
+      </div>
+
+      <div class="meta-grid report-section">
         <div>
           <h3>Final URL</h3>
           <p id="finalUrl" class="mono">-</p>
@@ -64,20 +78,61 @@
           <h3>Safe Index Match</h3>
           <p id="safeMatch">-</p>
         </div>
+        <div>
+          <h3>HTTP Status</h3>
+          <p id="httpStatus">-</p>
+        </div>
       </div>
 
-      <div>
+      <div class="report-section">
         <h3>Reasons</h3>
         <ul id="reasonsList"></ul>
       </div>
 
-      <div class="screenshot-wrap">
+      <div class="report-section">
+        <h3>Detailed Signal Breakdown</h3>
+        <div id="signalGrid" class="signal-grid"></div>
+      </div>
+
+      <div class="report-section">
+        <h3>Redirect Chain</h3>
+        <ol id="redirectChainList" class="redirect-chain-list"></ol>
+      </div>
+
+      <div class="report-section">
+        <h3>Analyst Summary</h3>
+        <p id="analysisSummary" class="analysis-summary">-</p>
+      </div>
+
+      <!-- Action buttons before screenshot -->
+      <div class="report-actions report-section">
+        <button type="button" id="downloadPdfBtn" class="btn-action">&#8595; Download PDF</button>
+        <button type="button" id="copyReportBtn" class="btn-action btn-action-secondary">&#9166; Copy Report</button>
+      </div>
+
+      <div class="screenshot-wrap report-section">
         <h3>Safe Preview (Screenshot)</h3>
         <img id="shot" alt="Isolated website screenshot" />
       </div>
     </section>
   </main>
 
+  <footer class="site-footer">
+    <div class="footer-inner">
+      <p class="footer-disclaimer">
+        <strong>Disclaimer:</strong> This tool provides automated, heuristic-based threat analysis and is intended
+        for informational and educational purposes only. Results may contain false positives or false negatives.
+        BITA does not guarantee the accuracy, completeness, or fitness of any analysis for a particular purpose.
+        Do not rely solely on this report to make security decisions. Always conduct independent verification
+        before acting on any findings.
+      </p>
+      <p class="footer-credits">
+        Report analysis by <strong>BITA</strong> (Browser Isolation &amp; Threat Analyzer) &nbsp;&bull;&nbsp;
+        Developed by <strong>Rishi Savla</strong>
+      </p>
+    </div>
+  </footer>
+<!--  -->
   <script src="{{ url_for('static', filename='script.js') }}"></script>
 </body>
 </html>
