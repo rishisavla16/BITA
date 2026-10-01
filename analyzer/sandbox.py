@@ -1,6 +1,6 @@
 import os
 import re
-import uuid
+import base64
 from typing import Any, Callable, Dict, List, Optional
 
 from playwright.sync_api import Error as PlaywrightError
@@ -12,11 +12,6 @@ class SandboxAnalysisError(Exception):
     pass
 
 
-def _safe_filename(prefix: str = "capture", ext: str = "png") -> str:
-    token = uuid.uuid4().hex
-    return f"{prefix}_{token}.{ext}"
-
-
 def _collect_main_frame_redirects(url_chain: List[str], new_url: str) -> None:
     if not new_url:
         return
@@ -24,51 +19,24 @@ def _collect_main_frame_redirects(url_chain: List[str], new_url: str) -> None:
         url_chain.append(new_url)
 
 
-def _write_png_bytes(file_path: str, image_bytes: bytes) -> None:
-    with open(file_path, "wb") as fp:
-        fp.write(image_bytes)
-
-
-def _safe_emit(
-    on_progress: Optional[Callable[[str, Optional[str]], None]],
-    stage: str,
-    preview_path: Optional[str] = None,
-) -> None:
-    if not on_progress:
-        return
-    on_progress(stage, preview_path)
-
-
 def run_in_sandbox(
     target_url: str,
-    screenshots_dir: str,
-    timeout_ms: int = 45000,
-    on_progress: Optional[Callable[[str, Optional[str]], None]] = None,
-    screenshot_prefix: Optional[str] = None,
+    timeout_ms: int = 30000,
 ) -> Dict[str, Any]:
     """
     Security model:
     - Treat URL as hostile input.
-    - Render only in server-side headless browser context.
-    - Never return raw untrusted HTML to the browser client.
-    - Return only controlled artifacts (screenshot + metadata + derived metrics).
+    - Render only in server-side headless browser context via Browserless.io
+    - Return only controlled artifacts (Base64 screenshot + metadata + derived metrics).
     """
-    os.makedirs(screenshots_dir, exist_ok=True)
-    prefix = screenshot_prefix or "capture"
-    screenshot_name = _safe_filename(prefix=prefix)
-    screenshot_path = os.path.join(screenshots_dir, screenshot_name)
-    preview_name = _safe_filename(prefix=f"{prefix}_live")
-    preview_path = os.path.join(screenshots_dir, preview_name)
-    preview_web_path = f"/screenshots/{preview_name}"
-
     redirect_chain: List[str] = []
 
     try:
-        _safe_emit(on_progress, "Launching isolated browser")
-
         with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True)
-            # Isolated context with downloads disabled.
+            # Use Browserless.io instead of a local Chromium instance
+            browserless_token = os.environ.get("BROWSERLESS_TOKEN", "2VMYsMrwkslXaUT5e2a1daa283e833939394b0060811d02e0")
+            browser = p.chromium.connect_over_cdp(f"wss://production-sfo.browserless.io/playwright?token={browserless_token}")
+            
             context = browser.new_context(
                 accept_downloads=False,
                 java_script_enabled=True,
@@ -78,7 +46,6 @@ def run_in_sandbox(
 
             page = context.new_page()
             page.set_default_timeout(timeout_ms)
-            _safe_emit(on_progress, "Opening target URL in sandbox")
 
             def on_frame_navigated(frame):
                 if frame == page.main_frame:
@@ -88,19 +55,15 @@ def run_in_sandbox(
 
             response = page.goto(target_url, wait_until="domcontentloaded", timeout=timeout_ms)
 
-            # Live preview is a static image generated in the isolated browser.
-            preview_bytes = page.screenshot(type="png", full_page=False)
-            _write_png_bytes(preview_path, preview_bytes)
-            _safe_emit(on_progress, "Initial page render captured", preview_web_path)
-
             page.wait_for_timeout(1200)
 
             _collect_main_frame_redirects(redirect_chain, page.url)
 
             title = page.title() or "(No title)"
+            
+            # Capture screenshot as raw bytes and convert to Base64 data URI
             final_bytes = page.screenshot(type="png", full_page=True)
-            _write_png_bytes(screenshot_path, final_bytes)
-            _safe_emit(on_progress, "Final screenshot captured", f"/screenshots/{screenshot_name}")
+            screenshot_b64 = "data:image/png;base64," + base64.b64encode(final_bytes).decode("utf-8")
 
             page_metrics = page.evaluate(
                 """
@@ -140,9 +103,7 @@ def run_in_sandbox(
                 "final_url": final_url,
                 "title": title,
                 "status_code": status_code,
-                "screenshot_path": f"/screenshots/{screenshot_name}",
-                "screenshot_disk_path": screenshot_path,
-                "live_preview_path": preview_web_path,
+                "screenshot_path": screenshot_b64, # Base64 injected directly into img src
                 "redirect_chain": redirect_chain,
                 "redirect_count": max(0, len(redirect_chain) - 1),
                 "form_count": int(page_metrics.get("form_count", 0)),
@@ -154,21 +115,9 @@ def run_in_sandbox(
             }
 
     except PlaywrightTimeoutError:
-        if os.path.exists(screenshot_path):
-            os.remove(screenshot_path)
-        if os.path.exists(preview_path):
-            os.remove(preview_path)
         raise SandboxAnalysisError("Timed out while loading the URL in the isolated browser.")
     except PlaywrightError as exc:
-        if os.path.exists(screenshot_path):
-            os.remove(screenshot_path)
-        if os.path.exists(preview_path):
-            os.remove(preview_path)
         message = re.sub(r"\s+", " ", str(exc)).strip()
         raise SandboxAnalysisError(f"Playwright sandbox error: {message[:300]}")
     except Exception as exc:
-        if os.path.exists(screenshot_path):
-            os.remove(screenshot_path)
-        if os.path.exists(preview_path):
-            os.remove(preview_path)
         raise SandboxAnalysisError(f"Unexpected sandbox failure: {str(exc)[:200]}")

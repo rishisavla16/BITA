@@ -293,25 +293,6 @@ function revealResultPanel() {
   resultPanel.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
-function loadImageWhenReady(imageElement, src, timeoutMs = 6000) {
-  if (!hasElement(imageElement) || !src) return Promise.resolve(false);
-  return new Promise((resolve) => {
-    const cacheBustedSrc = `${src}?t=${Date.now()}`;
-    let settled = false;
-    const done = (ok) => {
-      if (settled) return;
-      settled = true;
-      if (ok) imageElement.src = cacheBustedSrc;
-      resolve(ok);
-    };
-    const probe = new Image();
-    probe.onload = () => done(true);
-    probe.onerror = () => done(false);
-    probe.src = cacheBustedSrc;
-    setTimeout(() => done(false), timeoutMs);
-  });
-}
-
 function renderFinalResult(data) {
   _currentReportData = data;
 
@@ -335,15 +316,14 @@ function renderFinalResult(data) {
 
   if (hasElement(livePanel)) livePanel.classList.add("hidden");
 
-  loadImageWhenReady(shot, data.screenshot_path || "").finally(() => {
-    if (hasElement(shot) && !shot.getAttribute("src") && data.screenshot_path) {
-      shot.src = `${data.screenshot_path}?t=${Date.now()}`;
-    }
-    revealResultPanel();
-    // Show Clear button after report is ready.
-    showCancelBtn(false);
-    showClearBtn(true);
-  });
+  // screenshot_path is now a Base64 data URI — set it directly.
+  if (hasElement(shot) && data.screenshot_path) {
+    shot.src = data.screenshot_path;
+  }
+
+  revealResultPanel();
+  showCancelBtn(false);
+  showClearBtn(true);
 }
 
 // ─── Report text builder (for copy / PDF) ────────────────────────────────────
@@ -595,44 +575,6 @@ function escHtml(str) {
     .replace(/"/g, "&quot;");
 }
 
-// ─── Polling ──────────────────────────────────────────────────────────────────
-async function pollJobStatus(jobId) {
-  let latestPreview = "";
-
-  for (let i = 0; i < 60; i += 1) {
-    if (_cancelled) throw new Error("__cancelled__");
-
-    const response = await fetch(`/analyze/status/${jobId}?t=${Date.now()}`);
-    const statusData = await response.json();
-
-    if (!response.ok || !statusData.ok) {
-      throw new Error(statusData.error || "Unable to get analysis status.");
-    }
-
-    if (statusData.stage) {
-      if (hasElement(loadingText)) loadingText.textContent = statusData.stage;
-      if (hasElement(liveStage)) liveStage.textContent = statusData.stage;
-    }
-
-    if (statusData.preview_path && statusData.preview_path !== latestPreview) {
-      latestPreview = statusData.preview_path;
-      if (hasElement(liveShot)) liveShot.src = `${latestPreview}?t=${Date.now()}`;
-    }
-
-    if (statusData.status === "completed" && statusData.result) {
-      return statusData.result;
-    }
-
-    if (statusData.status === "failed") {
-      throw new Error(statusData.error || "Sandbox analysis failed.");
-    }
-
-    await sleep(1200);
-  }
-
-  throw new Error("Analysis timed out while waiting for job completion.");
-}
-
 // ─── Form submit ──────────────────────────────────────────────────────────────
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -649,37 +591,42 @@ form.addEventListener("submit", async (event) => {
   }
 
   setLoading(true);
-  showCancelBtn(true);
+  showCancelBtn(false);
   showClearBtn(false);
 
-  if (hasElement(loadingText)) loadingText.textContent = "Submitting analysis job";
-  if (hasElement(livePanel)) livePanel.classList.remove("hidden");
+  const stages = [
+    "Connecting to isolated browser...",
+    "Opening target URL in sandbox...",
+    "Capturing page screenshot...",
+    "Running threat analysis...",
+  ];
+  let stageIndex = 0;
+  if (hasElement(loadingText)) loadingText.textContent = stages[0];
+  const stageInterval = setInterval(() => {
+    stageIndex = (stageIndex + 1) % stages.length;
+    if (hasElement(loadingText)) loadingText.textContent = stages[stageIndex];
+  }, 4000);
 
   try {
-    const startResponse = await fetch("/analyze/start", {
+    const response = await fetch("/analyze", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ url }),
     });
 
-    const startData = await startResponse.json();
+    const data = await response.json();
 
-    if (!startResponse.ok || !startData.ok || !startData.job_id) {
-      throw new Error(startData.error || "Failed to start analysis.");
+    if (!response.ok || !data.ok) {
+      throw new Error(data.error || "Analysis failed.");
     }
 
-    const finalResult = await pollJobStatus(startData.job_id);
-    renderFinalResult(finalResult);
+    renderFinalResult(data);
   } catch (error) {
-    if (error.message === "__cancelled__") {
-      // Already handled by cancel button.
-    } else {
-      showError(error.message || "Unexpected error.");
-      showCancelBtn(false);
-      showClearBtn(true);
-    }
+    showError(error.message || "Unexpected error.");
+    showClearBtn(true);
   } finally {
+    clearInterval(stageInterval);
     setLoading(false);
-    if (!_cancelled) showCancelBtn(false);
+    showCancelBtn(false);
   }
 });
