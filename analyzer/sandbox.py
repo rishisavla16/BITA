@@ -33,9 +33,9 @@ def run_in_sandbox(
 
     try:
         with sync_playwright() as p:
-            # Use Browserless.io instead of a local Chromium instance
+            # connect_over_cdp uses the base Browserless CDP endpoint (no /playwright path)
             browserless_token = os.environ.get("BROWSERLESS_TOKEN", "2VMYsMrwkslXaUT5e2a1daa283e833939394b0060811d02e0")
-            browser = p.chromium.connect_over_cdp(f"wss://production-sfo.browserless.io/playwright?token={browserless_token}")
+            browser = p.chromium.connect_over_cdp(f"wss://production-sfo.browserless.io?token={browserless_token}")
             
             context = browser.new_context(
                 accept_downloads=False,
