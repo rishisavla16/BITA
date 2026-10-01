@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FAQ - Remote Browser Isolation &amp; Threat Analyzer</title>
+  <meta name="description" content="Frequently Asked Questions about BITA." />
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+</head>
+<body>
+  <div class="page-wrapper">
+    <nav class="navbar">
+      <div class="navbar-inner">
+        <div class="nav-brand"><a href="/" style="color: inherit; text-decoration: none;">BITA</a></div>
+        <div class="nav-links">
+          <a href="/faq" class="nav-link">FAQ</a>
+          <button id="themeToggleBtn" class="theme-toggle-btn">☀ / ☾ Mode</button>
+        </div>
+      </div>
+    </nav>
+
+    <main class="app-shell">
+      <section class="faq-section" style="margin-top: 0;">
+        <h2 class="faq-title">Frequently Asked Questions</h2>
+        
+        <div class="faq-item">
+          <button class="faq-question">What is BITA? <span class="faq-icon">&#x2304;</span></button>
+          <div class="faq-answer">
+            <p>BITA (Remote Browser Isolation & Threat Analyzer) is a security tool that allows you to safely inspect untrusted URLs. It opens the link in a secure, isolated server environment and provides you with a screenshot and risk analysis, keeping your personal device completely safe.</p>
+          </div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-question">Is BITA free to use? <span class="faq-icon">&#x2304;</span></button>
+          <div class="faq-answer">
+            <p>Yes. The usage of our service is free and does not require any sign-up, subscription, or software.</p>
+          </div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-question">Which platforms are supported? <span class="faq-icon">&#x2304;</span></button>
+          <div class="faq-answer">
+            <p>BITA is a web-based service and works on any modern web browser across all platforms (Windows, macOS, Linux, iOS, Android).</p>
+          </div>
+        </div>
+        
+        <div class="faq-item">
+          <button class="faq-question">How does BITA keep my device safe? <span class="faq-icon">&#x2304;</span></button>
+          <div class="faq-answer">
+            <p>When you submit a URL, our isolated cloud servers visit the site instead of your device. We then send you a harmless screenshot and metadata, ensuring no malicious code or scripts can reach your computer.</p>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <div class="footer-inner">
+        <div class="footer-links">
+          <a href="/privacy">Privacy Policy</a>
+          <a href="/terms">Terms of Use</a>
+        </div>
+        <p class="footer-credits">
+          <strong>BITA</strong> &nbsp;&bull;&nbsp; Developed by <strong>Rishi Savla</strong>
+        </p>
+      </div>
+    </footer>
+  </div>
+
+  <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>

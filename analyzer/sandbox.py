@@ -1,7 +1,8 @@
 import os
 import re
 import base64
-from typing import Any, Callable, Dict, List, Optional
+import requests as http_requests
+from typing import Any, Dict, List
 
 from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
@@ -19,6 +20,37 @@ def _collect_main_frame_redirects(url_chain: List[str], new_url: str) -> None:
         url_chain.append(new_url)
 
 
+def _browserless_screenshot(final_url: str, token: str, timeout_ms: int) -> str:
+    """
+    Use Browserless REST API to take a reliable full-page screenshot.
+    Returns a Base64 data URI string.
+    This is separate from the Playwright CDP session because full_page=True
+    is broken over CDP connections (only captures left half).
+    """
+    try:
+        resp = http_requests.post(
+            f"https://production-sfo.browserless.io/screenshot?token={token}",
+            json={
+                "url": final_url,
+                "options": {
+                    "fullPage": True,
+                    "type": "png",
+                },
+                "gotoOptions": {
+                    "waitUntil": "networkidle2",
+                    "timeout": timeout_ms,
+                },
+                "waitForTimeout": 1500,
+            },
+            timeout=timeout_ms / 1000 + 10,
+        )
+        if resp.status_code == 200 and resp.content:
+            return "data:image/png;base64," + base64.b64encode(resp.content).decode("utf-8")
+    except Exception:
+        pass
+    return ""
+
+
 def run_in_sandbox(
     target_url: str,
     timeout_ms: int = 30000,
@@ -26,17 +58,25 @@ def run_in_sandbox(
     """
     Security model:
     - Treat URL as hostile input.
-    - Render only in server-side headless browser context via Browserless.io
+    - Render only in server-side isolated browser via Browserless.io.
     - Return only controlled artifacts (Base64 screenshot + metadata + derived metrics).
+
+    Screenshot strategy:
+    - Playwright CDP handles all analysis (forms, redirects, JS metrics).
+    - Browserless REST API handles the full-page screenshot (CDP full_page=True is broken).
     """
     redirect_chain: List[str] = []
+    browserless_token = os.environ.get(
+        "BROWSERLESS_TOKEN",
+        "2VMYsMrwkslXaUT5e2a1daa283e833939394b0060811d02e0"
+    )
 
     try:
         with sync_playwright() as p:
-            # connect_over_cdp uses the base Browserless CDP endpoint (no /playwright path)
-            browserless_token = os.environ.get("BROWSERLESS_TOKEN", "2VMYsMrwkslXaUT5e2a1daa283e833939394b0060811d02e0")
-            browser = p.chromium.connect_over_cdp(f"wss://production-sfo.browserless.io?token={browserless_token}")
-            
+            browser = p.chromium.connect_over_cdp(
+                f"wss://production-sfo.browserless.io?token={browserless_token}"
+            )
+
             context = browser.new_context(
                 accept_downloads=False,
                 java_script_enabled=True,
@@ -55,15 +95,22 @@ def run_in_sandbox(
 
             response = page.goto(target_url, wait_until="domcontentloaded", timeout=timeout_ms)
 
-            page.wait_for_timeout(1200)
+            # Wait for redirects and post-load navigations to settle
+            try:
+                page.wait_for_load_state("networkidle", timeout=6000)
+            except Exception:
+                pass
 
+            page.wait_for_timeout(800)
             _collect_main_frame_redirects(redirect_chain, page.url)
 
-            title = page.title() or "(No title)"
-            
-            # Capture screenshot as raw bytes and convert to Base64 data URI
-            final_bytes = page.screenshot(type="png", full_page=True)
-            screenshot_b64 = "data:image/png;base64," + base64.b64encode(final_bytes).decode("utf-8")
+            # Use the fully-settled URL for the screenshot (after all redirects)
+            final_url = page.url
+
+            try:
+                title = page.title() or "(No title)"
+            except Exception:
+                title = "(No title)"
 
             page_metrics = page.evaluate(
                 """
@@ -94,25 +141,28 @@ def run_in_sandbox(
             )
 
             status_code = response.status if response else None
-            final_url = page.url
 
             context.close()
             browser.close()
 
-            return {
-                "final_url": final_url,
-                "title": title,
-                "status_code": status_code,
-                "screenshot_path": screenshot_b64, # Base64 injected directly into img src
-                "redirect_chain": redirect_chain,
-                "redirect_count": max(0, len(redirect_chain) - 1),
-                "form_count": int(page_metrics.get("form_count", 0)),
-                "password_input_count": int(page_metrics.get("password_input_count", 0)),
-                "email_input_count": int(page_metrics.get("email_input_count", 0)),
-                "form_auth_hint_count": int(page_metrics.get("form_auth_hint_count", 0)),
-                "external_script_count": int(page_metrics.get("external_script_count", 0)),
-                "text_excerpt": str(page_metrics.get("text_excerpt", "")),
-            }
+        # Take the full-page screenshot via Browserless REST API (after CDP session closes).
+        # Uses the final settled URL (post-redirect) for accuracy.
+        screenshot_b64 = _browserless_screenshot(final_url, browserless_token, timeout_ms)
+
+        return {
+            "final_url": final_url,
+            "title": title,
+            "status_code": status_code,
+            "screenshot_path": screenshot_b64,
+            "redirect_chain": redirect_chain,
+            "redirect_count": max(0, len(redirect_chain) - 1),
+            "form_count": int(page_metrics.get("form_count", 0)),
+            "password_input_count": int(page_metrics.get("password_input_count", 0)),
+            "email_input_count": int(page_metrics.get("email_input_count", 0)),
+            "form_auth_hint_count": int(page_metrics.get("form_auth_hint_count", 0)),
+            "external_script_count": int(page_metrics.get("external_script_count", 0)),
+            "text_excerpt": str(page_metrics.get("text_excerpt", "")),
+        }
 
     except PlaywrightTimeoutError:
         raise SandboxAnalysisError("Timed out while loading the URL in the isolated browser.")

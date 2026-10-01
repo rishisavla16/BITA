@@ -54,6 +54,21 @@ def index():
     return render_template("index.html")
 
 
+@app.route("/faq")
+def faq():
+    return render_template("faq.html")
+
+
+@app.route("/privacy")
+def privacy():
+    return render_template("privacy.html")
+
+
+@app.route("/terms")
+def terms():
+    return render_template("terms.html")
+
+
 @app.route("/analyze", methods=["POST"])
 def analyze_url():
     payload = request.get_json(silent=True) or {}
@@ -67,6 +82,18 @@ def analyze_url():
     try:
         # Run synchronously. Browserless is very fast, so this should finish within Vercel's timeout.
         sandbox_result = run_in_sandbox(normalized_url, timeout_ms=30000)
+
+        # Block NSFW Content
+        nsfw_keywords = [
+            "porn", "xvideos", "xhamster", "xnxx", "redtube", "youporn",
+            "spankwire", "tube8", "brazzers", "onlyfans", "sex", "nude"
+        ]
+        
+        title_lower = sandbox_result.get("title", "").lower()
+        final_url_lower = sandbox_result.get("final_url", normalized_url).lower()
+        
+        if any(k in title_lower or k in final_url_lower for k in nsfw_keywords):
+            return jsonify({"ok": False, "error": "Analysis blocked: NSFW/Adult content detected."}), 400
 
         safe_match = SAFE_URL_INDEX.might_be_safe(sandbox_result.get("final_url", normalized_url))
         behavior = analyze_behavior(normalized_url, sandbox_result, safe_match)

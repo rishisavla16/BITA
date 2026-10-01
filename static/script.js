@@ -1,8 +1,14 @@
 const form = document.getElementById("analyzeForm");
 const urlInput = document.getElementById("urlInput");
 const analyzeBtn = document.getElementById("analyzeBtn");
-const loading = document.getElementById("loading");
-const loadingText = document.getElementById("loadingText");
+const loading = document.getElementById("progressStepper"); // Used for legacy references
+const progressStepper = document.getElementById("progressStepper");
+const steps = [
+  document.getElementById("step1"),
+  document.getElementById("step2"),
+  document.getElementById("step3"),
+  document.getElementById("step4")
+];
 const livePanel = document.getElementById("livePanel");
 const liveStage = document.getElementById("liveStage");
 const liveShot = document.getElementById("liveShot");
@@ -27,6 +33,55 @@ const cancelBtn = document.getElementById("cancelBtn");
 const clearBtn = document.getElementById("clearBtn");
 const downloadPdfBtn = document.getElementById("downloadPdfBtn");
 const copyReportBtn = document.getElementById("copyReportBtn");
+const screenshotPanel = document.getElementById("screenshotPanel");
+
+const themeToggleBtn = document.getElementById("themeToggleBtn");
+
+// ─── Theme Management ─────────────────────────────────────────────────────────
+function updateThemeIcon(theme) {
+  if (themeToggleBtn) {
+    // If it is dark, show Sun to switch to light. If light, show Moon to switch to dark.
+    themeToggleBtn.textContent = theme === "dark" ? "☀" : "☾";
+  }
+}
+
+function initTheme() {
+  const savedTheme = localStorage.getItem("bita-theme") || "dark";
+  document.documentElement.setAttribute("data-theme", savedTheme);
+  updateThemeIcon(savedTheme);
+}
+
+function toggleTheme() {
+  const currentTheme = document.documentElement.getAttribute("data-theme");
+  const newTheme = currentTheme === "dark" ? "light" : "dark";
+  document.documentElement.setAttribute("data-theme", newTheme);
+  localStorage.setItem("bita-theme", newTheme);
+  updateThemeIcon(newTheme);
+}
+
+if (themeToggleBtn) {
+  themeToggleBtn.addEventListener("click", toggleTheme);
+}
+
+initTheme();
+
+// ─── FAQ Accordion ────────────────────────────────────────────────────────────
+const faqQuestions = document.querySelectorAll('.faq-question');
+faqQuestions.forEach(btn => {
+  btn.addEventListener('click', () => {
+    const faqItem = btn.parentElement;
+    const answer = btn.nextElementSibling;
+    
+    // Toggle active state
+    faqItem.classList.toggle('active');
+    
+    if (faqItem.classList.contains('active')) {
+      answer.style.maxHeight = answer.scrollHeight + "px";
+    } else {
+      answer.style.maxHeight = 0;
+    }
+  });
+});
 
 // Tracks current report data for PDF / copy actions.
 let _currentReportData = null;
@@ -119,8 +174,40 @@ function showClearBtn(show) {
 }
 
 function setLoading(isLoading) {
-  if (hasElement(loading)) loading.classList.toggle("hidden", !isLoading);
+  if (hasElement(progressStepper)) progressStepper.classList.toggle("hidden", !isLoading);
   if (hasElement(analyzeBtn)) analyzeBtn.disabled = isLoading;
+}
+
+function resetStepper() {
+  steps.forEach(step => {
+    if (step) {
+      step.classList.remove("active", "done");
+      step.classList.add("pending");
+    }
+  });
+}
+
+function updateStepper(currentIndex) {
+  steps.forEach((step, index) => {
+    if (!step) return;
+    step.classList.remove("active", "done", "pending");
+    if (index < currentIndex) {
+      step.classList.add("done");
+    } else if (index === currentIndex) {
+      step.classList.add("active");
+    } else {
+      step.classList.add("pending");
+    }
+  });
+}
+
+function finishStepper() {
+  steps.forEach(step => {
+    if (step) {
+      step.classList.remove("active", "pending");
+      step.classList.add("done");
+    }
+  });
 }
 
 function clearError() {
@@ -282,6 +369,7 @@ function hideResultPanel() {
   if (!hasElement(resultPanel)) return;
   resultPanel.classList.remove("visible");
   resultPanel.classList.add("hidden");
+  if (hasElement(screenshotPanel)) screenshotPanel.classList.add("hidden");
 }
 
 function revealResultPanel() {
@@ -290,7 +378,7 @@ function revealResultPanel() {
   requestAnimationFrame(() => {
     resultPanel.classList.add("visible");
   });
-  resultPanel.scrollIntoView({ behavior: "smooth", block: "start" });
+  if (hasElement(screenshotPanel)) screenshotPanel.classList.remove("hidden");
 }
 
 function renderFinalResult(data) {
@@ -591,21 +679,19 @@ form.addEventListener("submit", async (event) => {
   }
 
   setLoading(true);
+  resetStepper();
+  updateStepper(0);
   showCancelBtn(false);
   showClearBtn(false);
 
-  const stages = [
-    "Connecting to isolated browser...",
-    "Opening target URL in sandbox...",
-    "Capturing page screenshot...",
-    "Running threat analysis...",
-  ];
   let stageIndex = 0;
-  if (hasElement(loadingText)) loadingText.textContent = stages[0];
+  // Progresses through steps 0, 1, 2, 3 (leaving 3 active until done)
   const stageInterval = setInterval(() => {
-    stageIndex = (stageIndex + 1) % stages.length;
-    if (hasElement(loadingText)) loadingText.textContent = stages[stageIndex];
-  }, 4000);
+    if (stageIndex < steps.length - 1) {
+      stageIndex++;
+      updateStepper(stageIndex);
+    }
+  }, 2500);
 
   try {
     const response = await fetch("/analyze", {
@@ -620,6 +706,9 @@ form.addEventListener("submit", async (event) => {
       throw new Error(data.error || "Analysis failed.");
     }
 
+    finishStepper();
+    // Wait briefly to show the final green tick before revealing results
+    await new Promise(r => setTimeout(r, 400));
     renderFinalResult(data);
   } catch (error) {
     showError(error.message || "Unexpected error.");

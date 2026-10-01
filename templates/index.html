@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -8,13 +8,23 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
 </head>
 <body>
-  <main class="app-shell">
-    <section class="panel hero">
-      <h1>Remote Browser Isolation &amp; Threat Analyzer</h1>
-      <p>
-        Untrusted URLs are executed only in a server-side isolated browser. You receive a safe screenshot,
-        metadata, and risk analysis results only.
-      </p>
+  <div class="page-wrapper">
+    <nav class="navbar">
+      <div class="navbar-inner">
+        <div class="nav-brand">BITA</div>
+        <div class="nav-links">
+          <a href="/faq" class="nav-link">FAQ</a>
+          <button id="themeToggleBtn" class="theme-toggle-btn">☀ / ☾ Mode</button>
+        </div>
+      </div>
+    </nav>
+
+    <main class="app-shell">
+      <section class="panel hero">
+        <p>
+          Untrusted URLs are executed only in a server-side isolated browser. You receive a safe screenshot,
+          metadata, and risk analysis results only.
+        </p>
 
       <form id="analyzeForm" class="analyze-form" autocomplete="off">
         <label for="urlInput">URL to analyze</label>
@@ -27,9 +37,13 @@
         </div>
       </form>
 
-      <div id="loading" class="loading hidden" aria-live="polite">
-        <div class="spinner" aria-hidden="true"></div>
-        <span id="loadingText">Running isolated analysis...</span>
+      <div id="progressStepper" class="progress-stepper hidden" aria-live="polite">
+        <ul class="stepper-list">
+          <li id="step1" class="step pending"><span class="step-icon"></span> Connecting to isolated browser...</li>
+          <li id="step2" class="step pending"><span class="step-icon"></span> Navigating to target URL...</li>
+          <li id="step3" class="step pending"><span class="step-icon"></span> Capturing full-page screenshot...</li>
+          <li id="step4" class="step pending"><span class="step-icon"></span> Running threat analysis...</li>
+        </ul>
       </div>
 
       <div id="livePanel" class="live-panel hidden">
@@ -110,7 +124,10 @@
         <button type="button" id="copyReportBtn" class="btn-action btn-action-secondary">&#9166; Copy Report</button>
       </div>
 
-      <div class="screenshot-wrap report-section">
+      </section>
+
+    <section id="screenshotPanel" class="panel screenshot-panel hidden">
+      <div class="screenshot-wrap">
         <h3>Safe Preview (Screenshot)</h3>
         <img id="shot" alt="Isolated website screenshot" />
       </div>
@@ -119,20 +136,17 @@
 
   <footer class="site-footer">
     <div class="footer-inner">
-      <p class="footer-disclaimer">
-        <strong>Disclaimer:</strong> This tool provides automated, heuristic-based threat analysis and is intended
-        for informational and educational purposes only. Results may contain false positives or false negatives.
-        BITA does not guarantee the accuracy, completeness, or fitness of any analysis for a particular purpose.
-        Do not rely solely on this report to make security decisions. Always conduct independent verification
-        before acting on any findings.
-      </p>
+      <div class="footer-links">
+        <a href="/privacy">Privacy Policy</a>
+        <a href="/terms">Terms of Use</a>
+      </div>
       <p class="footer-credits">
-        Report analysis by <strong>BITA</strong> (Browser Isolation &amp; Threat Analyzer) &nbsp;&bull;&nbsp;
-        Developed by <strong>Rishi Savla</strong>
+        <strong>BITA</strong> &nbsp;&bull;&nbsp; Developed by <strong>Rishi Savla</strong>
       </p>
     </div>
   </footer>
-<!--  -->
+</div>
+
   <script src="{{ url_for('static', filename='script.js') }}"></script>
 </body>
 </html>

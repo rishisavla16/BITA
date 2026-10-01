@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Privacy Policy - Remote Browser Isolation &amp; Threat Analyzer</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+</head>
+<body>
+  <div class="page-wrapper">
+    <nav class="navbar">
+      <div class="navbar-inner">
+        <div class="nav-brand"><a href="/" style="color: inherit; text-decoration: none;">BITA</a></div>
+        <div class="nav-links">
+          <a href="/faq" class="nav-link">FAQ</a>
+          <button id="themeToggleBtn" class="theme-toggle-btn">☀ / ☾ Mode</button>
+        </div>
+      </div>
+    </nav>
+
+    <main class="app-shell">
+      <section class="panel">
+        <h2 style="margin-top:0; margin-bottom: 1rem;">Privacy Policy</h2>
+        <p style="color: var(--text-muted); line-height: 1.6; margin-bottom: 1rem;">
+          At BITA (Remote Browser Isolation & Threat Analyzer), your privacy is our priority. 
+          When you use our service to analyze a URL, the request is processed entirely on our isolated 
+          servers or through our trusted third-party browser execution partners (e.g., Browserless.io).
+        </p>
+        <p style="color: var(--text-muted); line-height: 1.6; margin-bottom: 1rem;">
+          <strong>Data Collection:</strong> We do not collect or store personally identifiable information (PII). 
+          The URLs you submit are analyzed in ephemeral, isolated environments that are destroyed immediately 
+          after the analysis is complete. We do not keep logs of the URLs you submit beyond standard, temporary 
+          operational server logs required to run the service.
+        </p>
+        <p style="color: var(--text-muted); line-height: 1.6;">
+          <strong>Third-Party Services:</strong> We use Browserless.io to safely spin up headless browsers for URL analysis. 
+          Your submitted URLs are processed through their secure infrastructure in accordance with their privacy policies.
+        </p>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <div class="footer-inner">
+        <div class="footer-links">
+          <a href="/privacy">Privacy Policy</a>
+          <a href="/terms">Terms of Use</a>
+        </div>
+        <p class="footer-credits">
+          <strong>BITA</strong> &nbsp;&bull;&nbsp; Developed by <strong>Rishi Savla</strong>
+        </p>
+      </div>
+    </footer>
+  </div>
+
+  <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>
