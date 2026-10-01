@@ -42,7 +42,7 @@ def _safe_emit(
 def run_in_sandbox(
     target_url: str,
     screenshots_dir: str,
-    timeout_ms: int = 10000,
+    timeout_ms: int = 45000,
     on_progress: Optional[Callable[[str, Optional[str]], None]] = None,
     screenshot_prefix: Optional[str] = None,
 ) -> Dict[str, Any]:

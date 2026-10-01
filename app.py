@@ -228,7 +228,7 @@ def _get_job(job_id: str) -> Dict[str, Any] | None:
 
 
 def _build_analysis_response(submitted_url: str, normalized_url: str) -> Dict[str, Any]:
-    sandbox_result = run_in_sandbox(normalized_url, SCREENSHOTS_DIR, timeout_ms=10000)
+    sandbox_result = run_in_sandbox(normalized_url, SCREENSHOTS_DIR, timeout_ms=45000)
 
     # Synchronous endpoint does not expose live preview; remove it immediately.
     preview_disk_path = _web_path_to_disk_path(str(sandbox_result.get("live_preview_path", "")))
@@ -277,7 +277,7 @@ def _run_async_analysis_job(job_id: str) -> None:
         sandbox_result = run_in_sandbox(
             normalized_url,
             SCREENSHOTS_DIR,
-            timeout_ms=10000,
+            timeout_ms=45000,
             on_progress=on_progress,
             screenshot_prefix=f"job_{job_id[:10]}",
         )
