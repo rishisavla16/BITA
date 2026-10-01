@@ -8,7 +8,14 @@ from analyzer.scorer import score_risk
 from analyzer.sandbox import SandboxAnalysisError, run_in_sandbox
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-SAFE_URL_INDEX = build_default_safe_index(BASE_DIR)
+
+try:
+    SAFE_URL_INDEX = build_default_safe_index(BASE_DIR)
+except Exception:
+    # Graceful fallback: safe index is optional. Analysis will still work,
+    # but allowlist matching will be disabled.
+    from analyzer.safe_lookup import SafeUrlIndex
+    SAFE_URL_INDEX = SafeUrlIndex(source_file="", bloom_file="", meta_file="")
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 16 * 1024  # Prevent oversized request bodies.
