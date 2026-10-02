@@ -139,6 +139,16 @@ body {
   transition: opacity 0.45s ease, transform 0.45s ease;
 }
 
+.info {
+  border: 1px solid var(--line-color);
+  border-radius: 8px; /* Sharper corners for modern minimal look */
+  background-color: var(--card-bg);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+  padding: 1.5rem;
+  width: min(1000px, 92vw);
+  margin: 3rem auto;
+}
+
 .result.visible {
   opacity: 1;
   transform: translateY(0);

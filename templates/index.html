@@ -20,13 +20,9 @@
 
     <main class="app-shell">
       <section class="panel hero">
-        <p>
-          Untrusted URLs are executed only in a server-side isolated browser. You receive a safe screenshot,
-          metadata, and risk analysis results only.
-        </p>
 
       <form id="analyzeForm" class="analyze-form" autocomplete="off">
-        <label for="urlInput">URL to analyze</label>
+        <label for="urlInput">Enter the URL to analyze</label>
         <div class="input-row">
           <input id="urlInput" name="url" type="text" placeholder="https://example.com" required />
           <button type="submit" id="analyzeBtn">Analyze</button>
@@ -131,7 +127,14 @@
         <img id="shot" alt="Isolated website screenshot" />
       </div>
     </section>
+
   </main>
+  <section class="info">
+    <h4>BITA - Browser Isolation &amp; Threat Analyzer</h4>
+    <p>
+      <i>Not sure if a link is safe? Let BITA check it for you.</i><br>BITA opens suspicious links in a secure, locked environment far away from your device. It gives you a safety score, points out any hidden dangers, and shows you a harmless picture of the website. You get to see what is on the other side of the link without ever putting your device at risk.
+    </p>
+  </section>
 
   <footer class="site-footer">
     <div class="footer-inner">
