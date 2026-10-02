@@ -381,18 +381,35 @@ button:hover {
   font-size: 0.85rem;
 }
 
+/* Tier 1 — Clean / Trusted (0–20) */
 .badge.safe {
   color: var(--ok);
   background-color: rgba(52, 211, 153, 0.1);
   border-color: rgba(52, 211, 153, 0.3);
 }
 
+/* Tier 2 — Guarded / Moderate / Elevated (21–41) */
+.badge.low {
+  color: #60a5fa;
+  background-color: rgba(96, 165, 250, 0.1);
+  border-color: rgba(96, 165, 250, 0.3);
+}
+
+/* Tier 3 — Suspicious / Concerning / Harmful (42–62) */
 .badge.suspicious {
   color: var(--warn);
   background-color: rgba(251, 191, 36, 0.1);
   border-color: rgba(251, 191, 36, 0.3);
 }
 
+/* Tier 4 — High Risk / Very High Risk / Dangerous (63–83) */
+.badge.elevated {
+  color: #f97316;
+  background-color: rgba(249, 115, 22, 0.1);
+  border-color: rgba(249, 115, 22, 0.3);
+}
+
+/* Tier 5 — Critical / Severe / Malicious (84–100) */
 .badge.risky {
   color: var(--danger);
   background-color: rgba(248, 113, 113, 0.1);
@@ -437,17 +454,11 @@ button:hover {
   transition: width 0.65s ease, background-color 0.3s ease;
 }
 
-.risk-meter-fill.safe {
-  background-color: var(--ok);
-}
-
-.risk-meter-fill.suspicious {
-  background-color: var(--warn);
-}
-
-.risk-meter-fill.risky {
-  background-color: var(--danger);
-}
+.risk-meter-fill.safe     { background-color: var(--ok); }
+.risk-meter-fill.low      { background-color: #60a5fa; }
+.risk-meter-fill.suspicious { background-color: var(--warn); }
+.risk-meter-fill.elevated { background-color: #f97316; }
+.risk-meter-fill.risky    { background-color: var(--danger); }
 
 .meta-grid {
   margin-top: 1rem;

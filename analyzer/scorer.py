@@ -53,14 +53,37 @@ def score_risk(behavior_result: Dict[str, Any]) -> Dict[str, Any]:
 
     score = max(0, min(100, score))
 
+    # 15 granular verdicts — one per 7-point band from 0 to 100
     if safe_allowlist_hit and not major_flags and score < 20:
-        verdict = "Safe"
-    elif score >= 75:
-        verdict = "High Risk"
-    elif score >= 45:
+        verdict = "Trusted"
+    elif score <= 6:
+        verdict = "Clean"
+    elif score <= 13:
+        verdict = "Very Low Risk"
+    elif score <= 20:
+        verdict = "Low Risk"
+    elif score <= 27:
+        verdict = "Guarded"
+    elif score <= 34:
+        verdict = "Moderate"
+    elif score <= 41:
+        verdict = "Elevated"
+    elif score <= 48:
         verdict = "Suspicious"
+    elif score <= 55:
+        verdict = "Concerning"
+    elif score <= 62:
+        verdict = "Harmful"
+    elif score <= 69:
+        verdict = "High Risk"
+    elif score <= 76:
+        verdict = "Very High Risk"
+    elif score <= 83:
+        verdict = "Dangerous"
+    elif score <= 89:
+        verdict = "Critical"
     else:
-        verdict = "Low to Moderate"
+        verdict = "Malicious"
 
     return {
         "risk_score": score,

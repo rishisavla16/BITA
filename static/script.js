@@ -236,13 +236,24 @@ function resetLivePanel() {
 }
 
 // ─── Rendering ───────────────────────────────────────────────────────────────
+function verdictTone(verdict) {
+  // Tier 1 — safe (green)
+  if (["Trusted", "Clean", "Very Low Risk", "Low Risk"].includes(verdict)) return "safe";
+  // Tier 2 — low (blue)
+  if (["Guarded", "Moderate", "Elevated"].includes(verdict)) return "low";
+  // Tier 3 — suspicious (yellow)
+  if (["Suspicious", "Concerning", "Harmful"].includes(verdict)) return "suspicious";
+  // Tier 4 — elevated (orange)
+  if (["High Risk", "Very High Risk", "Dangerous"].includes(verdict)) return "elevated";
+  // Tier 5 — risky (red)
+  return "risky"; // Critical, Malicious
+}
+
 function renderVerdict(verdict) {
   if (!hasElement(verdictBadge)) return;
   verdictBadge.textContent = verdict;
-  verdictBadge.classList.remove("safe", "suspicious", "risky");
-  if (verdict === "High Risk") verdictBadge.classList.add("risky");
-  else if (verdict === "Suspicious") verdictBadge.classList.add("suspicious");
-  else verdictBadge.classList.add("safe");
+  verdictBadge.classList.remove("safe", "low", "suspicious", "elevated", "risky");
+  verdictBadge.classList.add(verdictTone(verdict));
 }
 
 function renderReasons(reasons) {
@@ -268,9 +279,11 @@ function normalizePercent(value) {
 }
 
 function riskToneFromScore(score) {
-  if (score >= 75) return "risky";
-  if (score >= 45) return "suspicious";
-  return "safe";
+  if (score <= 20) return "safe";       // Clean → Low Risk
+  if (score <= 41) return "low";        // Guarded → Elevated
+  if (score <= 62) return "suspicious"; // Suspicious → Harmful
+  if (score <= 83) return "elevated";   // High Risk → Dangerous
+  return "risky";                       // Critical → Malicious
 }
 
 function renderRiskMeter(score) {

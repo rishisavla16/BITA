@@ -1,412 +1,415 @@
 # BITA: Browser Isolation and Threat Analyzer
 
-BITA is a local Flask web application for inspecting untrusted URLs in a server-side, headless Chromium browser. It does not load the submitted site directly in the analyst's browser. Instead, it returns a controlled screenshot, page metadata, redirect information, observed DOM metrics, heuristic reasons, and a risk score.
+BITA is a Flask web application for inspecting untrusted URLs inside a **remote, server-side isolated browser**. It does not load the submitted site in the analyst's own browser. Instead, it returns a safe screenshot, page metadata, redirect chain, heuristic reasons, and a risk score.
 
-> **Important:** BITA is an analysis and triage aid, not a malware sandbox, antivirus product, allowlist authority, or replacement for professional security review. The result can contain false positives and false negatives. Never submit secrets or rely on a single report for a security decision.
+> **Important:** BITA is an analysis and triage aid, not a malware sandbox, antivirus product, allowlist authority, or replacement for professional security review. Results can contain false positives and false negatives. Never submit secrets or rely on a single report for a security decision.
+
+---
+
+## Changelog — Major Architecture & UI Changes
+
+### 🔄 Screenshot Engine: Playwright/Chromium → Browserless.io REST API
+
+**What changed:**  
+The original implementation launched a local Playwright-controlled Chromium binary on the server to capture screenshots and collect page signals. This was replaced with a remote [Browserless.io](https://browserless.io) headless browser service called via REST API.
+
+**Why:**  
+- **Vercel Serverless Compatibility:** Vercel does not allow bundling Chromium or persistent child processes inside serverless functions. The old Playwright approach caused deployment failures because there was no local browser binary available at runtime.
+- **Full-page Screenshot Reliability:** Playwright's `full_page=True` was unreliable — it frequently captured only the visible viewport portion. The Browserless REST API (`/screenshot` endpoint) reliably returns a full-page image with a single HTTP call.
+- **Reduced Cold-start Weight:** Removing Playwright and local browser binaries from the deployment keeps the serverless bundle small and fast to initialise.
+
+**How it works now:**  
+`analyzer/sandbox.py` sends a POST request to the Browserless `/screenshot` endpoint and a separate DOM evaluation call to the Browserless `/function` endpoint. The screenshot is returned as a Base64-encoded PNG data URI, which is set directly on the `<img>` element in the frontend without any intermediate file save.
+
+**Environment variable required:**
+```
+BROWSERLESS_API_KEY=<your key>
+```
+
+---
+
+### 📡 API Architecture: Async Polling → Synchronous Single Request
+
+**What changed:**  
+The original architecture split analysis into three separate routes:
+- `POST /analyze/start` — start a background thread job
+- `GET /analyze/status/<job_id>` — poll for live stage updates  
+- `GET /screenshots/<filename>` — serve saved screenshot files
+
+This was replaced with a single **synchronous** route: `POST /analyze`.
+
+**Why:**  
+- Vercel serverless functions cannot sustain background threads across requests. The polling architecture depended on in-process memory that doesn't survive between serverless invocations.
+- The SQLite database for job persistence (`analysis_logs.db`) was also removed because serverless ephemeral filesystems don't persist writes between invocations.
+- Browserless is fast enough that a single blocking request comfortably fits within Vercel's function timeout.
+
+---
+
+### 🎨 UI/UX Revamp: Coloured Theme → Black & White with Day/Night Toggle
+
+**What changed:**  
+The original UI used mixed greens, blues, and accent colours throughout. This was completely replaced with a strict **black-and-white** design system using CSS custom properties (`--var`).
+
+**Why:**  
+User preference. A monochrome palette looks cleaner, more professional, and is easier to extend with a theme toggle.
+
+**Specifics:**
+- **Dark mode (default):** Near-black background `#191919`, card surface `#282828`, white text.
+- **Light mode:** Off-white cream background `#fcfbf8` (not harsh pure white), warm charcoal text `#2a2825`.
+- All colour values live in `:root` and `[data-theme="light"]` blocks in `static/style.css`, making future updates trivial.
+- Theme preference is persisted in `localStorage` under the key `bita-theme`.
+
+---
+
+### ☀/☾ Theme Toggle Button
+
+**What changed:**  
+Added a theme toggle button in the navbar. It shows only one icon at a time:
+- **☀** when in dark mode (click to switch to light).
+- **☾** when in light mode (click to switch to dark).
+
+On hover, the icon **rotates 30 degrees** via a CSS `transform: rotate(30deg)` transition. It has no visible box, border, or background — it is a clean floating emoji.
+
+**Why:**  
+Cleaner UX. Showing both `☀ / ☾` simultaneously was ambiguous about the current state. Showing only the icon you would switch *to* makes the affordance immediately obvious.
+
+---
+
+### 📊 Progress Stepper (replaces old Spinner)
+
+**What changed:**  
+The old single spinner with a rotating text label was replaced with a **4-step visual progress stepper** that appears while analysis runs:
+
+1. Connecting to isolated browser...
+2. Navigating to target URL...
+3. Capturing full-page screenshot...
+4. Running threat analysis...
+
+Each step transitions through three visual states:
+- **Pending** — greyed out circle
+- **Active** — spinning ring with bold text (the current step)
+- **Done** — filled green circle with a white checkmark ✓
+
+**How it works:**  
+Since the backend returns all results in a single blocking response, the stepper is driven by a `setInterval` timer on the frontend (2.5 seconds per step). The moment the actual server response arrives, all remaining steps are instantly forced to green, a 400ms pause lets the analyst see the completed state, then the results panel fades in.
+
+**Why not real streaming?**  
+Vercel serverless functions don't support Server-Sent Events or WebSocket streaming in a way that's compatible with the current single-route design. The timed animation is the standard industry approach for this UX pattern.
+
+---
+
+### 🧭 Site Structure: Single Page → Multi-page with Separate Routes
+
+**What changed:**  
+Added three new pages accessible via their own Flask routes and URL paths:
+
+| Route | Template | Purpose |
+|---|---|---|
+| `/faq` | `templates/faq.html` | Collapsible FAQ accordion |
+| `/privacy` | `templates/privacy.html` | Privacy Policy |
+| `/terms` | `templates/terms.html` | Terms of Use & Disclaimer |
+
+**Why:**  
+The disclaimer was previously embedded inline on the main analysis page. Moving legal and informational content to dedicated pages keeps the main UI focused on the core analysis workflow and makes each page independently linkable.
+
+---
+
+### 🗂 Navbar & Footer Layout
+
+**What changed:**
+- A fixed **navbar** was added at the top of every page containing the BITA logo (links to `/`) on the left, and FAQ link + theme toggle on the right.
+- A **sticky footer** was added to every page showing: `FAQ · Privacy Policy · Terms of Use` links and the credits line.
+- Both the navbar content and the main page body are constrained to `min(1000px, 92vw)` — they align on the same horizontal column so the nav never appears wider than the content.
+- The layout uses a `page-wrapper` flex column with `min-height: 100vh` so the footer is always pinned to the bottom even on short pages, with no scroll overflow.
+
+---
+
+### 🚫 NSFW Content Blocking
+
+**What changed:**  
+Added a post-sandbox content filter in `app.py` that checks both the **final redirected URL** and the **page title** returned by the sandbox against a keyword blocklist of known adult content domains and terms.
+
+**Why:**  
+The sandbox executes and screenshots any URL submitted. Without filtering, adult content screenshots would be rendered directly in the analyst's browser. The filter intercepts the result before it is returned to the client and returns a `400` error: *"Analysis blocked: NSFW/Adult content detected."*
+
+The check happens **after** the sandbox runs but **before** the screenshot or any result is sent to the frontend, ensuring no image ever reaches the client.
+
+---
+
+### 🚫 Auto-scroll Removed
+
+**What changed:**  
+When results finished loading, the original code called `resultPanel.scrollIntoView({ behavior: "smooth", block: "start" })`, which aggressively scrolled the page so the results panel hit the top of the viewport — hiding the navbar and input area.
+
+**Why removed:**  
+The results appear directly below the form in a single-screen layout. There is no need to force a scroll. Removing it keeps the analyst's view anchored where they were.
+
+---
 
 ## Features
 
 - Accepts a URL with or without an explicit `http://` or `https://` scheme.
 - Rejects malformed URLs, unsupported schemes, oversized input, and obvious localhost targets.
-- Opens the target only in a Playwright-controlled headless Chromium context.
-- Disables browser downloads and uses a fixed 1440 x 900 viewport.
-- Captures a live preview while an asynchronous analysis is running.
-- Captures a final full-page screenshot after the page settles.
+- Executes the target URL in a **remote Browserless.io isolated browser** — never in the analyst's own browser.
+- Captures a full-page screenshot returned as a Base64 data URI.
 - Records the final URL, page title, HTTP status, redirect chain, and selected page metrics.
-- Detects signals such as credential forms, authentication-like forms, suspicious keywords, raw IP hosts, long URLs, external scripts, and missing HTTPS.
-- Checks the final host against a configurable safe-domain source using a cached Bloom filter.
-- Produces a score from 0 to 100 and one of these verdicts: `Safe`, `Low to Moderate`, `Suspicious`, or `High Risk`.
-- Stores completed asynchronous analyses in a local SQLite database.
-- Lets an analyst copy a text report or open a print dialog to save a PDF report.
+- Detects credential forms, auth-like forms, suspicious keywords, raw IP hosts, long URLs, external scripts, and missing HTTPS.
+- Checks the final host against a configurable safe-domain Bloom filter index.
+- Produces a risk score (0–100) and verdict: `Safe`, `Low to Moderate`, `Suspicious`, or `High Risk`.
+- Blocks NSFW/adult content before any result reaches the client.
+- Black-and-white UI with persistent day/night theme toggle.
+- Analyst can copy a plain-text report or open a PDF print dialog.
+
+---
 
 ## How It Works
 
 ```text
 Analyst browser
       |
-      | POST /analyze/start
+      | POST /analyze  { "url": "..." }
       v
-Flask application
+Flask app.py
       |
-      | background thread
+      | HTTP REST call to Browserless.io /screenshot + /function
       v
-Playwright + isolated Chromium context
+Remote isolated headless Chromium (Browserless cloud)
       |
-      | screenshot, redirects, title, status, DOM metrics
+      | Base64 PNG + DOM metrics JSON
       v
-Behavior analysis -> risk scoring -> SQLite log
+NSFW filter → Behavior analysis → Risk scoring
       |
       v
-Frontend polls /analyze/status/<job_id> and renders the report
+Single JSON response to frontend
+Frontend renders stepper → results panel
 ```
 
-The application never sends the target page's raw HTML to the frontend. The browser client receives derived metadata and screenshots served from the application's controlled `screenshots/` directory.
+The analyst's browser client never receives the target page's HTML. It receives only derived metadata and a screenshot image encoded as a data URI.
+
+---
 
 ## Requirements
 
-- Windows, macOS, or Linux.
-- Python 3.10 or newer is recommended because the code uses modern type-union syntax such as `str | None`.
-- A Chromium browser installed by Playwright.
-- Network access from the machine running BITA to the URLs being analyzed and, on first setup, to install Python packages and the Playwright browser.
+- Python 3.10 or newer.
+- A [Browserless.io](https://browserless.io) API key (free tier available).
+- Network access from the deployment environment to Browserless's cloud endpoint.
+- No local Chromium binary is needed.
 
-Runtime dependencies are listed in [`requirements.txt`](requirements.txt):
+Runtime Python dependencies (`requirements.txt`):
 
 - Flask 3 or newer
-- Playwright 1.40 or newer
+- `requests` (for Browserless REST calls)
 
-## Installation
+---
 
-Open a terminal in this directory:
+## Environment Variables
+
+| Variable | Required | Description |
+|---|---|---|
+| `BROWSERLESS_API_KEY` | ✅ Yes | API key for Browserless.io |
+| `SAFE_URL_SOURCE_FILE` | No | Path to safe-domain source list |
+| `SAFE_URL_BLOOM_FILE` | No | Path to generated Bloom filter cache |
+| `SAFE_URL_META_FILE` | No | Path to Bloom filter metadata |
+
+---
+
+## Installation (Local Development)
 
 ```powershell
 cd C:\Users\rishi\Desktop\BITA\rbi-threat-analyzer
-```
-
-Create and activate a virtual environment:
-
-```powershell
 py -m venv .venv
 .\.venv\Scripts\Activate.ps1
-```
-
-If PowerShell blocks activation, either enable the current-user script policy or activate from Command Prompt instead:
-
-```cmd
-.venv\Scripts\activate.bat
-```
-
-Install Python dependencies and the Playwright browser:
-
-```powershell
 python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
-python -m playwright install chromium
 ```
 
-The browser installation is required. Installing only the Python package is not enough for `run_in_sandbox()` to launch Chromium.
+Set your Browserless API key:
 
-## Running the Application
+```powershell
+$env:BROWSERLESS_API_KEY = "your_key_here"
+```
 
-Start the development server with:
+Start the development server:
 
 ```powershell
 python app.py
 ```
 
-The server binds to `127.0.0.1:5000` with debug mode disabled. Open:
+Open: `http://127.0.0.1:5000/`
 
-```text
-http://127.0.0.1:5000/
-```
+---
 
-To stop the server, press `Ctrl+C`.
+## Deployment (Vercel)
 
-The application creates these generated files or directories when needed:
+BITA is designed to run as a Vercel serverless application. The `vercel.json` routes all requests to `app.py` via the Python WSGI runtime. No local browser binary is bundled — all browser execution is handled remotely by Browserless.
 
-- `analysis_logs.db`: SQLite analysis history. It is ignored by Git.
-- `screenshots/`: final screenshots and short-lived live previews. It is ignored by Git.
-- `intel/safe_domains_10m.bloom`: cached Bloom-filter bit array.
-- `intel/safe_domains_10m.meta.json`: cache metadata. It is ignored by Git.
+Set `BROWSERLESS_API_KEY` in your Vercel project's Environment Variables dashboard.
 
-## Using the Web Interface
-
-1. Enter a URL such as `https://example.com`.
-2. Select **Analyze**.
-3. Watch the live sandbox stage and preview while the job runs.
-4. Review the verdict, score, reasons, metadata, signal breakdown, redirect chain, and final screenshot.
-5. Use **Copy Report** to copy a plain-text report or **Download PDF** to open a browser print dialog.
-
-The **Cancel** button stops frontend polling and marks the UI as cancelled. It does not terminate a browser already running on the server; the background job may continue until it completes or fails. Completed job records are retained in memory for approximately 30 minutes.
+---
 
 ## HTTP API
 
 ### `GET /`
-
-Returns the HTML application.
+Returns the main HTML application.
 
 ### `POST /analyze`
 
-Runs a complete analysis synchronously. This route is useful for API clients that can wait for the browser operation to finish. It does not expose a live preview.
+Runs a complete synchronous analysis.
 
-Request:
-
+**Request:**
 ```json
-{
-  "url": "https://example.com"
-}
+{ "url": "https://example.com" }
 ```
 
-Successful response fields include:
-
+**Successful response (abbreviated):**
 ```json
 {
   "ok": true,
   "submitted_url": "https://example.com",
-  "normalized_url": "https://example.com",
   "final_url": "https://example.com/",
   "title": "Example Domain",
   "status_code": 200,
-  "screenshot_path": "/screenshots/capture_<uuid>.png",
+  "screenshot_path": "data:image/png;base64,...",
   "redirect_chain": ["https://example.com/"],
   "redirect_count": 0,
   "reasons": [],
   "signals": {},
-  "safe_match": {
-    "matched": false,
-    "source": "bloom",
-    "host": "example.com"
-  },
+  "safe_match": { "matched": false },
   "risk_score": 2,
   "verdict": "Low to Moderate"
 }
 ```
 
-The `signals` object contains the detailed boolean and numeric metrics described in the Detection and Scoring section. Possible error responses include `400` for invalid input, `502` for a sandbox timeout or Playwright failure, and `500` for an unexpected server-side failure. Internal exception details are not returned to the client.
+**Error responses:**
+- `400` — invalid input, NSFW content detected, or URL blocked.
+- `502` — Browserless timeout or remote browser failure.
+- `500` — unexpected server error.
 
-### `POST /analyze/start`
+### `GET /faq` · `GET /privacy` · `GET /terms`
+Return the respective informational HTML pages.
 
-Starts an asynchronous analysis and returns immediately:
-
-```json
-{
-  "ok": true,
-  "job_id": "<uuid without hyphens>"
-}
-```
-
-The frontend uses this route.
-
-### `GET /analyze/status/<job_id>`
-
-Returns the current job state:
-
-```json
-{
-  "ok": true,
-  "job_id": "<job id>",
-  "status": "running",
-  "stage": "Initial page render captured",
-  "preview_path": "/screenshots/job_<id>_live_<uuid>.png",
-  "error": ""
-}
-```
-
-The `status` value is normally `queued`, `running`, `completed`, or `failed`. A completed response also includes `result`, using the same result fields as `POST /analyze`. Unknown or expired jobs return `404`.
-
-### `GET /screenshots/<filename>`
-
-Serves a generated screenshot from the controlled screenshots directory. Filenames are generated by the server. Old files are periodically deleted after approximately 30 minutes.
+---
 
 ## URL Validation
 
 `normalize_url()` applies these rules before a browser is started:
 
-- Leading and trailing whitespace is removed.
-- A missing scheme defaults to `https://`.
+- Leading/trailing whitespace is stripped.
+- Missing scheme defaults to `https://`.
 - Only `http` and `https` are accepted.
-- A network location/host is required.
+- A network host is required.
 - URLs longer than 2048 characters are rejected.
-- `localhost`, `127.0.0.1`, `0.0.0.0`, and `::1` are rejected as obvious local targets.
+- `localhost`, `127.0.0.1`, `0.0.0.0`, and `::1` are rejected.
 
-This is input validation, not a complete server-side request isolation policy. The browser process still needs appropriate OS, container, network, and egress controls in any deployment that handles hostile URLs.
-
-## Sandbox Behavior
-
-The sandbox implementation is in [`analyzer/sandbox.py`](analyzer/sandbox.py). For every analysis it:
-
-1. Launches headless Chromium.
-2. Creates a new browser context with downloads disabled.
-3. Enables JavaScript because many real pages require it to render.
-4. Ignores HTTPS certificate errors so certificate problems can be observed instead of preventing all analysis.
-5. Uses a 10-second default navigation and page timeout.
-6. Tracks main-frame navigation events to build a redirect chain.
-7. Captures an initial viewport screenshot for the live preview.
-8. Waits 1.2 seconds for additional page activity.
-9. Captures a full-page final screenshot.
-10. Evaluates a small script to count forms, password inputs, email inputs, authentication hints, external scripts, and the first 50,000 characters of visible body text.
-
-The captured text excerpt is used only for keyword detection and is not returned in the final API result.
+---
 
 ## Detection and Scoring
 
-### Behavior signals
+### Behavior signals (`analyzer/behavior.py`)
 
-The behavior analyzer in [`analyzer/behavior.py`](analyzer/behavior.py) adds reasons for:
-
+Reasons are flagged for:
 - Two or more redirects.
-- A password input.
-- An authentication-like form containing account, login, verify, or password hints plus an email or password input.
-- The keywords `login`, `verify`, `bank`, `password`, or `secure` in the page title or visible text excerpt.
+- A password input detected.
+- An authentication-like form (account/login/verify/password hints with email or password input).
+- Suspicious keywords (`login`, `verify`, `bank`, `password`, `secure`) in title or page text.
 - Twelve or more external scripts.
-- A final URL whose host is a raw IPv4 address.
-- A final URL at least 140 characters long.
-- A final URL that is not HTTPS.
+- Final URL host is a raw IPv4 address.
+- Final URL is 140+ characters long.
+- Final URL is not HTTPS.
 
-### Score weights
+### Score weights (`analyzer/scorer.py`)
 
-The scorer in [`analyzer/scorer.py`](analyzer/scorer.py) starts at `2` and applies these additions:
+Starts at `2`, then:
 
 | Signal | Score change |
-| --- | ---: |
-| Two or more redirects | +12 |
-| Four or more redirects | +8 additional |
+|---|---:|
+| 2+ redirects | +12 |
+| 4+ redirects | +8 additional |
 | Credential form with password input | +26 |
-| Authentication-like form without a password input | +10 |
+| Auth-like form without password input | +10 |
 | Any other form | +1 |
-| Suspicious keywords | +3 per keyword, capped at +12 |
-| 25 or more external scripts | +8 |
-| 50 or more external scripts | +10 additional |
+| Suspicious keywords | +3 each, capped at +12 |
+| 25+ external scripts | +8 |
+| 50+ external scripts | +10 additional |
 | Raw IP host | +24 |
-| URL length of at least 140 characters | +10 |
+| URL length ≥ 140 chars | +10 |
 | Non-HTTPS final URL | +8 |
 | Safe-index match | -18 |
 
-The score is clamped to `0..100`. A safe-index match can clamp a result to at most `8` when there are no major flags. Major flags are a raw IP, a credential form, four or more redirects, or non-HTTPS. Verdict thresholds are:
+Verdict thresholds — 14 granular tiers across 7-point bands:
 
-| Score/result | Verdict |
-| --- | --- |
-| Safe-index match, no major flags, score below 20 | `Safe` |
-| 75 or higher | `High Risk` |
-| 45 to 74 | `Suspicious` |
-| Below 45 | `Low to Moderate` |
+| Score | Verdict | Badge Colour |
+|---|---|---|
+| Safe-index match, no major flags, score < 20 | `Trusted` | 🟢 Green |
+| 0 – 6 | `Clean` | 🟢 Green |
+| 7 – 13 | `Very Low Risk` | 🟢 Green |
+| 14 – 20 | `Low Risk` | 🟢 Green |
+| 21 – 27 | `Guarded` | 🔵 Blue |
+| 28 – 34 | `Moderate` | 🔵 Blue |
+| 35 – 41 | `Elevated` | 🔵 Blue |
+| 42 – 48 | `Suspicious` | 🟡 Yellow |
+| 49 – 55 | `Concerning` | 🟡 Yellow |
+| 56 – 62 | `Harmful` | 🟡 Yellow |
+| 63 – 69 | `High Risk` | 🟠 Orange |
+| 70 – 76 | `Very High Risk` | 🟠 Orange |
+| 77 – 83 | `Dangerous` | 🟠 Orange |
+| 84 – 89 | `Critical` | 🔴 Red |
+| 90 – 100 | `Malicious` | 🔴 Red |
 
-The safe index changes the score, but it does not override major suspicious behavior.
+---
 
 ## Safe-Domain Intelligence
 
-The default source is [`intel/safe_domains_10m.txt`](intel/safe_domains_10m.txt). It accepts one domain or URL per line, for example:
+Source: `intel/safe_domains_10m.txt` — one domain or URL per line.
 
-```text
-google.com
-youtube.com
-https://microsoft.com
-```
-
-Hosts are normalized to lowercase, surrounding dots are removed, and a leading `www.` is removed. The application loads or builds these cache files at startup:
+The application loads or builds a Bloom filter cache at startup:
 
 - `intel/safe_domains_10m.bloom`
 - `intel/safe_domains_10m.meta.json`
 
-The cache is reused only when the source path and source modification time match. If either cache is missing or stale, the source is scanned and a new filter is built. Membership checks are average O(1), but Bloom filters can produce false positives. A match means “possibly present in the source,” not verified trustworthiness.
+Bloom filters can produce false positives. A match means "possibly present in the source," not verified trustworthiness.
 
-Override the default paths with environment variables:
-
-```powershell
-$env:SAFE_URL_SOURCE_FILE = "D:\intel\trusted-domains.txt"
-$env:SAFE_URL_BLOOM_FILE = "D:\intel\trusted-domains.bloom"
-$env:SAFE_URL_META_FILE = "D:\intel\trusted-domains.meta.json"
-python app.py
-```
-
-If the source file is absent, the application starts without a ready index and all safe-index matches are false.
-
-## Persistence and Retention
-
-Completed asynchronous jobs are held in process memory and pruned after 1800 seconds. Screenshot cleanup runs at most every 300 seconds and removes screenshot files older than 1800 seconds. The synchronous route removes its temporary live preview immediately.
-
-Completed asynchronous results are written to `analysis_logs.db` with:
-
-- Submitted URL
-- Normalized URL
-- Final URL
-- Page title
-- Risk score
-- Verdict
-- Reasons joined into a text field
-- UTC creation timestamp
-
-The database has no built-in authentication, encryption, web history UI, or automatic row-retention policy. Treat it as local sensitive analysis data and protect the host filesystem.
+---
 
 ## Project Layout
 
 ```text
 rbi-threat-analyzer/
-|-- app.py                         Flask application, routes, jobs, and SQLite logging
-|-- requirements.txt               Python dependencies
-|-- analyzer/
-|   |-- behavior.py                Observed behavior signals and explanatory reasons
-|   |-- safe_lookup.py             Host normalization and Bloom-filter index
-|   |-- sandbox.py                 Playwright isolated-browser execution
-|   `-- scorer.py                  Risk score and verdict calculation
-|-- intel/
-|   |-- README.md                  Safe-index file format notes
-|   |-- safe_domains_10m.txt      Source host/domain list
-|   |-- safe_domains_10m.bloom    Generated Bloom-filter cache
-|   `-- safe_domains_10m.meta.json Generated cache metadata
-|-- templates/
-|   `-- index.html                 Main web interface
-|-- static/
-|   |-- script.js                  Submission, polling, rendering, copy, and PDF logic
-|   `-- style.css                  Interface styling and responsive layout
-|-- screenshots/                   Generated screenshots, ignored by Git
-|-- analysis_logs.db               Generated SQLite database, ignored by Git
-`-- README.md
+├── app.py                       Flask routes, URL validation, NSFW filter
+├── requirements.txt             Python dependencies
+├── vercel.json                  Vercel serverless routing config
+├── analyzer/
+│   ├── behavior.py              Behavior signal detection
+│   ├── safe_lookup.py           Bloom-filter safe-domain index
+│   ├── sandbox.py               Browserless.io REST API integration
+│   └── scorer.py                Risk score and verdict calculation
+├── intel/
+│   ├── README.md                Safe-index file format notes
+│   └── safe_domains_10m.txt     Source host/domain list
+├── templates/
+│   ├── index.html               Main analysis interface
+│   ├── faq.html                 FAQ accordion page
+│   ├── privacy.html             Privacy Policy page
+│   └── terms.html               Terms of Use page
+└── static/
+    ├── script.js                Analysis flow, stepper, theme toggle, report actions
+    └── style.css                Black-and-white design system, dark/light themes
 ```
 
-## Development Checks
-
-There is currently no automated test suite or lint configuration in the repository. Before committing a Python change, run a syntax check:
-
-```powershell
-python -m compileall app.py analyzer
-```
-
-Then perform a manual smoke test:
-
-1. Start the server with `python app.py`.
-2. Open `http://127.0.0.1:5000/`.
-3. Analyze a benign URL that you control or are authorized to inspect.
-4. Confirm the live preview, final screenshot, score, signal breakdown, and report actions work.
-5. Check that `analysis_logs.db` receives a completed asynchronous entry.
-
-For a direct API smoke test from PowerShell:
-
-```powershell
-$body = @{ url = "https://example.com" } | ConvertTo-Json
-Invoke-RestMethod -Uri "http://127.0.0.1:5000/analyze" -Method Post -ContentType "application/json" -Body $body
-```
-
-## Troubleshooting
-
-### `Executable doesn't exist` or Chromium launch failure
-
-Install the browser binaries:
-
-```powershell
-python -m playwright install chromium
-```
-
-### The page is unreachable or times out
-
-The target may be offline, blocked by the host network, dependent on a slow resource, or intentionally non-responsive. The sandbox timeout is currently 10 seconds.
-
-### Safe-index match is always false
-
-Confirm that `intel/safe_domains_10m.txt` exists and contains valid domains. If using overrides, verify all three environment variables point to the intended files. Delete stale generated cache files if you need to force a rebuild; the application will rebuild them at startup.
-
-### The live preview is blank or unavailable
-
-The preview is generated after the initial DOM content load and is temporary. A failed navigation, timeout, expired job, or early cancellation can prevent it from being shown.
-
-### Jobs disappear
-
-In-memory jobs are intentionally temporary and are pruned after approximately 30 minutes. Restarting the Flask process also clears them. Completed result fields are logged separately in SQLite.
-
-### PowerShell cannot activate the virtual environment
-
-Use Command Prompt activation (`.venv\Scripts\activate.bat`) or run the virtual-environment interpreter directly, for example `.venv\Scripts\python.exe app.py`.
+---
 
 ## Security and Deployment Notes
 
-- Keep BITA bound to localhost unless you add authentication, authorization, rate limiting, CSRF protections, request logging, and a carefully designed public deployment boundary.
-- Run hostile browsing in a dedicated low-privilege environment or container with restricted filesystem access and controlled outbound networking.
-- Do not expose the screenshot directory or SQLite database through a general file server.
-- Consider browser hardening, resource limits, DNS/IP egress controls, process isolation, and a separate worker service before handling untrusted users at scale.
-- `ignore_https_errors=True` is intentional for observation but should be treated as a risk when interpreting results.
-- The current localhost blocklist is only an obvious-target check and does not cover every private, link-local, encoded, redirected, or DNS-rebinding address.
-- The app has no authentication or multi-user isolation.
-- Do not treat a `Safe` verdict as proof that a site is safe, current, uncompromised, or affiliated with a legitimate organization.
+- Keep BITA behind authentication before exposing it publicly.
+- The Browserless API key should be set as a secret environment variable, never committed to source control.
+- NSFW filtering is keyword-based and heuristic — it is not a comprehensive content moderation system.
+- `ignore_https_errors` is intentional for observation purposes but means certificate problems won't block analysis.
+- The localhost blocklist only covers obvious direct targets and does not protect against DNS rebinding or redirect-based SSRF.
+- Do not treat a `Safe` verdict as proof that a site is safe, uncompromised, or affiliated with a legitimate organisation.
+
+---
 
 ## License and Ownership
 
-No license file is currently included in the repository. The UI credits report analysis to BITA and development to Rishi Savla. Add an explicit license before distributing the project or accepting external contributions.
+No license file is currently included in the repository. The UI credits report analysis to BITA and development to Rishi Savla. Add an explicit license before distributing or accepting external contributions.
+
